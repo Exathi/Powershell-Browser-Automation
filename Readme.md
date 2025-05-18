@@ -6,7 +6,7 @@ The goal is light browser automation without external dependencies.
 
 Only a small subset of commands and respective params are implemented from the Cdp and BiDi specifications. For everything else, <i>there's javascript</i>.
 
-This as an over engineered demo. (If there is a next version, WebSocket.ReceiveAsync would run in its own runspace.)
+This is an over engineered demo. (If there is a next version, WebSocket.ReceiveAsync would run in its own runspace.)
 
 
 ## ✨ Features
