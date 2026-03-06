@@ -1,74 +1,39 @@
 # Powershell Browser Automation
 
-Automate Chrome, Edge, and Firefox through Cdp and BiDi commands through a .net websocket.
+Automate any Chromium browser with Powershell with `--remote-debugging-pipe` and `--remote-debugging-io-pipe`. I still couldn't find any examples in 2026 that made use of these switches with dotnet without tapping into WinApi functions like this amazing repo https://github.com/PerditionC/VBAChromeDevProtocol/
 
-The goal is light browser automation without external dependencies.
+The goal is light browser automation without external dependencies and be a potential step up from VBA. Only a small subset of Cdp commands are implemented.
 
-Only a small subset of commands and respective params are implemented from the Cdp and BiDi specifications. For everything else, <i>there's javascript</i>.
+Currently this is all blocking. Events are only processed after each call to `$Browser.SendCommand()` or `$Browser.ProcessAllResponses()`.
 
-This is an over engineered demo. (If there is a next version, WebSocket.ReceiveAsync would run in its own runspace.)
+`AnonymousPipeServerStream.Write()` requires a null byte to be sent at the end of the string to signal end of write.
 
+`AnonymousPipeServerStream.Read()` locks the terminal on reading an empty pipe. For a workaround, send a null byte before reading to prevent the terminal from freezing if manually reading from the pipe.`
 
-## ✨ Features
-- Interchangeable function calls between browsers.
-- Automate the browser without installing external dependencies.
+## Commands
 
-## 📡 Getting Started
-1. Edge should have Startup Boost disabled or else a lingering process will prevent usage of some command line args.
-2. Provide a User Data folder (The browser will automatically create the folder if it doesn't exist.)
+Start-CdpPipeBrowser - Launch browser
 
+Stop-CdpPipeBrowser - Close browser
 
-    ### Example
-    ``` Powershell
-    . '.\Powershell Bidi.ps1'
+New-CdpPage - Create new page/tab
 
-    $CapabilitiesSplat = @{
-        UserDataDir = 'D:\The Testing Folder\Edge\User Data'
-        StartupUrl = 'about:blank'
-        Headless = $false
-        NoFirstRun = $true
-    }
+Invoke-CdpPageNavigate - Navigate page and waits for page load. (Late loading frames may still be missed.)
 
-    $Capabilities = New-CdpCapabilities @CapabilitiesSplat
-    $Session = Start-CdpBrowser -CdpCapabilities $Capabilities -BrowserType Edge
+Invoke-CdpClickElement - Find element with javascript selector and click element via DOM
 
-    # The `$Session` object must be passed to each Invoke-Bidi* function.
-    # It contains the websocket used to send commands to the browser.
-    $null = $Session | Invoke-BiDiNavigate -Url 'https://www.github.com/'
-    ```
+Invoke-CdpSendKeys - Sends keys to browser
 
+## Notes
 
-## ❓ How does it work
-- Chrome and Edge connect via Cdp. Firefox by BiDi.
+Pages and frames are by default autoattached. The event `Target.targetCreated` creates a new `[CdpPage]` into `$Browser.Targets` when processed.
 
-- When a browser is launched with `--remote-debugging-port=0`
-    - The browser chooses a free port to use.
-    - Cdp: A file named `DevToolsActivePort` created/overwritten in the provided User Data folder.
-    - Firefox: A file named `WebDriverBiDiServer.json` is created in the provided Profile folder.
-        - These files contain the localhost port for a websocket to connect to.
-        - These files are NOT created/overwritten if launched with a port other than 0.
+Some events such as `Target.targetCreated` `Target.attachedToTarget` `Target.detachedFromTarget` `Target.targetInfoChanged` are by default turned on to manage active pages. Only pages are attached. Types such as `service_worker` or `background_page` are excluded by default.
 
-- Control of browers is simply sending json messages according to Cdp and BiDi specifications.
+Page events are on by default per tab. Javascript is enabled by default.
 
-    https://chromedevtools.github.io/devtools-protocol/
+## Todo/Considerations
 
-    https://w3c.github.io/webdriver-bidi/
+Start the anonymous pipes in another runspace for non blocking reads.
 
-- Messages are sent and received round trip via `Invoke-BiDiMessage` or one sided `Send-BiDiMessage` and `Receive-BiDiMessage`
-
-    - One message is sent with an id. One message is received with the same id.
-    - Events are received and sent to `$BiDiSession.Events`. Events do not have an id.
-    - `BiDiSession.Responses` contains responses from the websocket.
-    - Messages are only processed during a function call.
-
-- A `[BiDiSession]` object is piped between each function. This object holds the websocket, responses, events, selected element, tabs, and sent messages (if `$DebugPreference` is set to `'Continue'`).
-
-
-## 📝 Notes
-- Objects are passed by reference by default in powershell functions.
-
-- If the websocket is closed or aborted without removing the BiDi Session, there is no way to reconnect with the session. Therefore all functions will remove the BiDi Session in the end block.
-
-- To prevent the above behavior use the switch `-ContinueSession` with `Start-CdpBrowser` and `Start-FirefoxBrowser` or set `$Session.ReleaseSession = $false` before calling functions.
-
-- `--remote-debugging-pipe` requires fds 3 and 4 to be open. I lack c# knowledge to fill `lpReserved2` with a proper packed struct. Maybe someone can give it a try. https://www.codeproject.com/Tips/5307593/Automate-Chrome-Edge-using-VBA
+Break up the file into smaller pieces.
